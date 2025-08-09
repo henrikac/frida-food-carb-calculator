@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="da" class="h-full bg-gray-50">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kulhydratberegner</title>
+  <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="h-full flex flex-col items-center justify-center p-6 font-sans">
+
+  <h1 class="text-3xl font-bold mb-6 text-gray-800">Kulhydratberegner</h1>
+
+  <div class="w-full max-w-2xl bg-white rounded-lg shadow p-6 space-y-6">
+
+    <!-- Upload fil -->
+    <div>
+      <label class="block mb-2 font-semibold text-gray-700" for="fileInput">Upload XLSX-fil</label>
+      <input
+        id="fileInput"
+        type="file"
+        accept=".xlsx,.xls"
+        class="block w-full rounded border border-gray-300 px-3 py-2 text-gray-700
+               focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+      />
+    </div>
+
+    <!-- Spinner -->
+    <div id="spinner" class="hidden flex justify-center">
+      <svg class="animate-spin h-8 w-8 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle
+          class="opacity-25"
+          cx="12" cy="12" r="10"
+          stroke="currentColor" stroke-width="4"
+        ></circle>
+        <path
+          class="opacity-75"
+          fill="currentColor"
+          d="M4 12a8 8 0 018-8v8H4z"
+        ></path>
+      </svg>
+    </div>
+
+    <!-- Ingrediens input -->
+    <form id="inputForm" class="space-y-4" autocomplete="off">
+      <label for="navnInput" class="block font-semibold text-gray-700">Ingrediens</label>
+      <input
+        id="navnInput"
+        type="text"
+        list="navneList"
+        placeholder="Vælg ingrediens..."
+        class="block w-full rounded border border-gray-300 px-3 py-2 text-gray-700
+               focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+        required
+      />
+      <datalist id="navneList"></datalist>
+
+      <label for="gramInput" class="block font-semibold text-gray-700">Gram</label>
+      <input
+        id="gramInput"
+        type="number"
+        min="0"
+        step="any"
+        placeholder="Indtast vægt i gram"
+        class="block w-full rounded border border-gray-300 px-3 py-2 text-gray-700
+               focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+        required
+      />
+
+      <button
+        type="submit"
+        class="w-full bg-indigo-600 text-white font-semibold rounded py-2 hover:bg-indigo-700 transition"
+      >
+        Tilføj ingrediens
+      </button>
+    </form>
+
+    <!-- Resultat tabel -->
+    <div class="overflow-x-auto">
+      <table class="min-w-full table-auto border-collapse border border-gray-300 text-left">
+        <thead class="bg-indigo-100">
+          <tr>
+            <th class="border border-gray-300 px-4 py-2">Ingrediens</th>
+            <th class="border border-gray-300 px-4 py-2">Gram</th>
+            <th class="border border-gray-300 px-4 py-2">Kulhydrat pr. 100g</th>
+            <th class="border border-gray-300 px-4 py-2">Kulhydrat (g)</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody" class="bg-white"></tbody>
+        <tfoot class="bg-indigo-50 font-semibold">
+          <tr>
+            <td class="border border-gray-300 px-4 py-2 text-right" colspan="3">Total kulhydrat:</td>
+            <td class="border border-gray-300 px-4 py-2" id="totalKul">0.00 g</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+  </div>
+
+  <script>
+    let database = {};
+    const fileInput = document.getElementById("fileInput");
+    const datalist = document.getElementById("navneList");
+    const navnInput = document.getElementById("navnInput");
+    const gramInput = document.getElementById("gramInput");
+    const spinner = document.getElementById("spinner");
+    const form = document.getElementById("inputForm");
+    const tableBody = document.getElementById("tableBody");
+    const totalKulElem = document.getElementById("totalKul");
+
+    let valgtListe = [];
+    let totalKulhydrat = 0;
+
+    function showSpinner(show) {
+      spinner.classList.toggle("hidden", !show);
+    }
+
+    function findColumnIndex(row, searchTerm) {
+      searchTerm = searchTerm.toLowerCase();
+      for (let i = 0; i < row.length; i++) {
+        if (!row[i]) continue;
+        const cleanHeader = row[i].toString().toLowerCase().replace(/[^a-zæøå0-9]/g, '');
+        if (cleanHeader.includes(searchTerm.replace(/[^a-zæøå0-9]/g, ''))) {
+          return i;
+        }
+      }
+      return -1;
+    }
+
+    function handleFile(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      showSpinner(true);
+
+      const reader = new FileReader();
+
+      reader.onload = function(evt) {
+        try {
+          const data = new Uint8Array(evt.target.result);
+          const workbook = XLSX.read(data, { type: "array" });
+
+          database = {};
+          datalist.innerHTML = "";
+          valgtListe = [];
+          tableBody.innerHTML = "";
+          totalKulhydrat = 0;
+          totalKulElem.textContent = "0.00 g";
+
+          const sheetName = "Data_Table";
+          if (!workbook.SheetNames.includes(sheetName)) {
+            alert(`Sheet "${sheetName}" findes ikke i filen.`);
+            showSpinner(false);
+            return;
+          }
+
+          const sheet = workbook.Sheets[sheetName];
+          const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+          if (jsonData.length < 5) {
+            alert("Sheet har ikke nok rækker til at læse data korrekt.");
+            showSpinner(false);
+            return;
+          }
+
+          const kulIdx = findColumnIndex(jsonData[0], "tilgængelig kulhydrat");
+          const navnIdx = findColumnIndex(jsonData[3], "fødevarenavn");
+
+          if (kulIdx === -1 || navnIdx === -1) {
+            alert("Kolonnerne kunne ikke findes korrekt.");
+            showSpinner(false);
+            return;
+          }
+
+          for (let i = 4; i < jsonData.length; i++) {
+            const row = jsonData[i];
+            if (!row) continue;
+
+            const navn = row[navnIdx];
+            const kul = parseFloat(row[kulIdx]);
+
+            if (navn && !isNaN(kul)) {
+              const key = navn.toString().toLowerCase();
+              if (!database[key]) {
+                database[key] = kul;
+
+                const option = document.createElement("option");
+                option.value = navn;
+                datalist.appendChild(option);
+              }
+            }
+          }
+
+          alert(`Data indlæst: ${Object.keys(database).length} ingredienser`);
+        } catch (err) {
+          alert("Fejl under filindlæsning: " + err.message);
+        } finally {
+          showSpinner(false);
+        }
+      };
+
+      reader.readAsArrayBuffer(file);
+    }
+
+    function opdaterTabel() {
+      tableBody.innerHTML = "";
+      totalKulhydrat = 0;
+
+      valgtListe.forEach(({ navn, gram, kulPer100 }) => {
+        const kul = (kulPer100 * gram) / 100;
+        totalKulhydrat += kul;
+
+        const tr = document.createElement("tr");
+
+        tr.innerHTML = `
+          <td class="border border-gray-300 px-4 py-2">${navn}</td>
+          <td class="border border-gray-300 px-4 py-2">${gram}</td>
+          <td class="border border-gray-300 px-4 py-2">${kulPer100.toFixed(2)}</td>
+          <td class="border border-gray-300 px-4 py-2">${kul.toFixed(2)}</td>
+        `;
+
+        tableBody.appendChild(tr);
+      });
+
+      totalKulElem.textContent = totalKulhydrat.toFixed(2) + " g";
+    }
+
+    form.addEventListener("submit", e => {
+      e.preventDefault();
+
+      const navnValgt = navnInput.value.trim();
+      const key = navnValgt.toLowerCase();
+      const gram = parseFloat(gramInput.value);
+
+      if (!database[key]) {
+        alert("Ingrediens ikke fundet i databasen.");
+        return;
+      }
+      if (isNaN(gram) || gram <= 0) {
+        alert("Indtast venligst en gyldig mængde i gram.");
+        return;
+      }
+
+      valgtListe.push({
+        navn: navnValgt,
+        gram,
+        kulPer100: database[key]
+      });
+
+      opdaterTabel();
+
+      // Reset inputs
+      navnInput.value = "";
+      gramInput.value = "";
+      navnInput.focus();
+    });
+
+    fileInput.addEventListener("change", handleFile);
+  </script>
+</body>
+</html>
