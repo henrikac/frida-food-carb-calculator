@@ -3,16 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Kulhydratberegner</title>
+  <title>Frida Food Carb Calculator</title>
   <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="h-full flex flex-col items-center justify-center p-6 font-sans">
+<body class="h-full flex flex-col items-center justify-start p-6 font-sans">
 
-  <h1 class="text-3xl font-bold mb-6 text-gray-800">Kulhydratberegner</h1>
+  <h1 class="text-3xl font-bold mb-6 text-gray-800">Frida Food Carb Calculator</h1>
 
-  <div class="w-full max-w-2xl bg-white rounded-lg shadow p-6 space-y-6">
-
+  <div class="w-full max-w-3xl bg-white rounded-lg shadow p-6 space-y-6">
     <!-- Upload fil -->
     <div>
       <label class="block mb-2 font-semibold text-gray-700" for="fileInput">Upload XLSX-fil</label>
@@ -28,89 +27,95 @@
     <!-- Spinner -->
     <div id="spinner" class="hidden flex justify-center">
       <svg class="animate-spin h-8 w-8 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-        <circle
-          class="opacity-25"
-          cx="12" cy="12" r="10"
-          stroke="currentColor" stroke-width="4"
-        ></circle>
-        <path
-          class="opacity-75"
-          fill="currentColor"
-          d="M4 12a8 8 0 018-8v8H4z"
-        ></path>
+        <circle class="opacity-25" cx="12" cy="12" r="10"
+                stroke="currentColor" stroke-width="4"></circle>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
       </svg>
     </div>
 
-    <!-- Ingrediens input -->
-    <form id="inputForm" class="space-y-4" autocomplete="off">
-      <label for="navnInput" class="block font-semibold text-gray-700">Ingrediens</label>
-      <input
-        id="navnInput"
-        type="text"
-        list="navneList"
-        placeholder="Vælg ingrediens..."
-        class="block w-full rounded border border-gray-300 px-3 py-2 text-gray-700
-               focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-        required
-      />
-      <datalist id="navneList"></datalist>
+    <div id="controls" class="hidden space-x-2">
+      <!-- Ingrediens input -->
+      <form id="inputForm" class="space-y-4" autocomplete="off">
+        <input
+          id="navnInput"
+          type="text"
+          list="navneList"
+          placeholder="Vælg ingrediens..."
+          class="block w-full rounded border border-gray-300 px-3 py-2 text-gray-700
+                focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          required
+        />
+        <datalist id="navneList"></datalist>
 
-      <label for="gramInput" class="block font-semibold text-gray-700">Gram</label>
-      <input
-        id="gramInput"
-        type="number"
-        min="0"
-        step="any"
-        placeholder="Indtast vægt i gram"
-        class="block w-full rounded border border-gray-300 px-3 py-2 text-gray-700
-               focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-        required
-      />
+        <input
+          id="gramInput"
+          type="number"
+          min="0"
+          step="any"
+          placeholder="Indtast vægt i gram"
+          class="block w-full rounded border border-gray-300 px-3 py-2 text-gray-700
+                focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          required
+        />
 
-      <button
-        type="submit"
-        class="w-full bg-indigo-600 text-white font-semibold rounded py-2 hover:bg-indigo-700 transition"
-      >
-        Tilføj ingrediens
-      </button>
-    </form>
+        <button
+          type="submit"
+          class="w-full bg-indigo-600 text-white font-semibold rounded py-2 hover:bg-indigo-700 transition"
+        >
+          Tilføj ingrediens
+        </button>
+      </form>
+    </div>
 
-    <!-- Resultat tabel -->
+    <!-- Ingrediens tabel -->
     <div class="overflow-x-auto">
-      <table class="min-w-full table-auto border-collapse border border-gray-300 text-left">
-        <thead class="bg-indigo-100">
+      <table class="min-w-full border border-gray-200">
+        <thead class="bg-gray-100">
           <tr>
-            <th class="border border-gray-300 px-4 py-2">Ingrediens</th>
-            <th class="border border-gray-300 px-4 py-2">Gram</th>
-            <th class="border border-gray-300 px-4 py-2">Kulhydrat pr. 100g</th>
-            <th class="border border-gray-300 px-4 py-2">Kulhydrat (g)</th>
+            <th class="p-2 border">Ingrediens</th>
+            <th class="p-2 border">Gram</th>
+            <th class="p-2 border">Kulhydrat / 100g</th>
+            <th class="p-2 border">Total kulhydrat</th>
+            <th class="p-2 border">Handlinger</th>
           </tr>
         </thead>
-        <tbody id="tableBody" class="bg-white"></tbody>
-        <tfoot class="bg-indigo-50 font-semibold">
+        <tbody id="ingredientsTable"></tbody>
+        <tfoot class="bg-gray-50 font-bold">
           <tr>
-            <td class="border border-gray-300 px-4 py-2 text-right" colspan="3">Total kulhydrat:</td>
-            <td class="border border-gray-300 px-4 py-2" id="totalKul">0.00 g</td>
+            <td colspan="3" class="p-2 border text-right">Total:</td>
+            <td id="totalCell" class="p-2 border">0.00</td>
+            <td class="border"></td>
           </tr>
         </tfoot>
       </table>
     </div>
 
+    <!-- Clear All Button -->
+    <div class="flex justify-end">
+      <button id="clearAllBtn" 
+        class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed"
+        disabled
+      >
+        Ryd alle
+      </button>
+    </div>
   </div>
 
   <script>
     let database = {};
+    let entries = [];
+
     const fileInput = document.getElementById("fileInput");
     const datalist = document.getElementById("navneList");
     const navnInput = document.getElementById("navnInput");
     const gramInput = document.getElementById("gramInput");
     const spinner = document.getElementById("spinner");
     const form = document.getElementById("inputForm");
-    const tableBody = document.getElementById("tableBody");
-    const totalKulElem = document.getElementById("totalKul");
+    const tableBody = document.getElementById("ingredientsTable");
+    const totalCell = document.getElementById("totalCell");
+    const clearAllBtn = document.getElementById("clearAllBtn");
 
-    let valgtListe = [];
-    let totalKulhydrat = 0;
+    clearAllBtn.disabled = true;
 
     function showSpinner(show) {
       spinner.classList.toggle("hidden", !show);
@@ -133,7 +138,6 @@
       if (!file) return;
 
       showSpinner(true);
-
       const reader = new FileReader();
 
       reader.onload = function(evt) {
@@ -143,10 +147,6 @@
 
           database = {};
           datalist.innerHTML = "";
-          valgtListe = [];
-          tableBody.innerHTML = "";
-          totalKulhydrat = 0;
-          totalKulElem.textContent = "0.00 g";
 
           const sheetName = "Data_Table";
           if (!workbook.SheetNames.includes(sheetName)) {
@@ -176,7 +176,6 @@
           for (let i = 4; i < jsonData.length; i++) {
             const row = jsonData[i];
             if (!row) continue;
-
             const navn = row[navnIdx];
             const kul = parseFloat(row[kulIdx]);
 
@@ -184,56 +183,77 @@
               const key = navn.toString().toLowerCase();
               if (!database[key]) {
                 database[key] = kul;
-
                 const option = document.createElement("option");
                 option.value = navn;
                 datalist.appendChild(option);
               }
             }
           }
-
-          alert(`Data indlæst: ${Object.keys(database).length} ingredienser`);
+          // alert(`Data indlæst: ${Object.keys(database).length} ingredienser`);
+          document.getElementById("controls").classList.remove("hidden");
         } catch (err) {
           alert("Fejl under filindlæsning: " + err.message);
         } finally {
           showSpinner(false);
         }
       };
-
       reader.readAsArrayBuffer(file);
     }
 
-    function opdaterTabel() {
+    function updateTable() {
       tableBody.innerHTML = "";
-      totalKulhydrat = 0;
+      let total = 0;
 
-      valgtListe.forEach(({ navn, gram, kulPer100 }) => {
-        const kul = (kulPer100 * gram) / 100;
-        totalKulhydrat += kul;
+      entries.forEach((item, index) => {
+        const row = document.createElement("tr");
 
-        const tr = document.createElement("tr");
-
-        tr.innerHTML = `
-          <td class="border border-gray-300 px-4 py-2">${navn}</td>
-          <td class="border border-gray-300 px-4 py-2">${gram}</td>
-          <td class="border border-gray-300 px-4 py-2">${kulPer100.toFixed(2)}</td>
-          <td class="border border-gray-300 px-4 py-2">${kul.toFixed(2)}</td>
+        row.innerHTML = `
+          <td class="border p-2">${item.name}</td>
+          <td class="border p-2">${item.grams}</td>
+          <td class="border p-2">${item.kulPer100}</td>
+          <td class="border p-2">${item.totalKul.toFixed(2)}</td>
+          <td class="border p-2 w-40">
+            <div class="flex gap-2">
+              <button class="bg-yellow-500 hover:bg-yellow-600 text-white px-2 py-1 rounded" onclick="editEntry(${index})">Rediger</button>
+              <button class="bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded" onclick="deleteEntry(${index})">Slet</button>
+            </div>
+          </td>
         `;
-
-        tableBody.appendChild(tr);
+        tableBody.appendChild(row);
+        total += item.totalKul;
       });
 
-      totalKulElem.textContent = totalKulhydrat.toFixed(2) + " g";
+      totalCell.textContent = total.toFixed(2);
+      clearAllBtn.disabled = entries.length === 0;
     }
+
+    function editEntry(index) {
+      const item = entries[index];
+      navnInput.value = item.name;
+      gramInput.value = item.grams;
+      entries.splice(index, 1);
+      updateTable();
+    }
+
+    function deleteEntry(index) {
+      entries.splice(index, 1);
+      updateTable();
+    }
+
+    clearAllBtn.addEventListener("click", () => {
+      if (confirm("Er du sikker på, at du vil rydde alle ingredienser?")) {
+        entries = [];
+        updateTable();
+      }
+    });
 
     form.addEventListener("submit", e => {
       e.preventDefault();
-
-      const navnValgt = navnInput.value.trim();
-      const key = navnValgt.toLowerCase();
+      const navn = navnInput.value.trim();
+      const key = navn.toLowerCase();
       const gram = parseFloat(gramInput.value);
 
-      if (!database[key]) {
+      if (database[key] === undefined) {
         alert("Ingrediens ikke fundet i databasen.");
         return;
       }
@@ -242,18 +262,12 @@
         return;
       }
 
-      valgtListe.push({
-        navn: navnValgt,
-        gram,
-        kulPer100: database[key]
-      });
+      const kulPer100 = database[key];
+      const totalKul = (kulPer100 * gram) / 100;
 
-      opdaterTabel();
-
-      // Reset inputs
-      navnInput.value = "";
-      gramInput.value = "";
-      navnInput.focus();
+      entries.push({ name: navn, grams: gram, kulPer100, totalKul });
+      updateTable();
+      form.reset();
     });
 
     fileInput.addEventListener("change", handleFile);
