@@ -102,56 +102,128 @@
   </div>
 
   <script>
-    let database = {};
-    let entries = [];
+    // ====== State ======
+    let database = {};                 // { lowercasedName: carbsPer100 }
+    let nameMap = {};                  // { lowercasedName: originalName }
+    let entries = [];                  // [{ name, grams, kulPer100, totalKul }]
 
-    const fileInput = document.getElementById("fileInput");
-    const datalist = document.getElementById("navneList");
-    const navnInput = document.getElementById("navnInput");
-    const gramInput = document.getElementById("gramInput");
-    const spinner = document.getElementById("spinner");
-    const form = document.getElementById("inputForm");
-    const tableBody = document.getElementById("ingredientsTable");
-    const totalCell = document.getElementById("totalCell");
+    // ====== DOM ======
+    const fileInput   = document.getElementById("fileInput");
+    const datalist    = document.getElementById("navneList");
+    const navnInput   = document.getElementById("navnInput");
+    const gramInput   = document.getElementById("gramInput");
+    const spinner     = document.getElementById("spinner");
+    const form        = document.getElementById("inputForm");
+    const tableBody   = document.getElementById("ingredientsTable");
+    const totalCell   = document.getElementById("totalCell");
     const clearAllBtn = document.getElementById("clearAllBtn");
+    const controls    = document.getElementById("controls");
 
-    clearAllBtn.disabled = true;
-
+    // ====== Utils ======
     function showSpinner(show) {
       spinner.classList.toggle("hidden", !show);
     }
 
     function findColumnIndex(row, searchTerm) {
-      searchTerm = searchTerm.toLowerCase();
+      const needle = (searchTerm || "").toLowerCase().replace(/[^a-zæøå0-9]/g, "");
       for (let i = 0; i < row.length; i++) {
         if (!row[i]) continue;
-        const cleanHeader = row[i].toString().toLowerCase().replace(/[^a-zæøå0-9]/g, '');
-        if (cleanHeader.includes(searchTerm.replace(/[^a-zæøå0-9]/g, ''))) {
-          return i;
-        }
+        const clean = row[i].toString().toLowerCase().replace(/[^a-zæøå0-9]/g, "");
+        if (clean.includes(needle)) return i;
       }
       return -1;
     }
 
+    function populateDatalist() {
+      datalist.innerHTML = "";
+      const names = Object.values(nameMap).sort((a, b) => a.localeCompare(b, "da"));
+      for (const n of names) {
+        const opt = document.createElement("option");
+        opt.value = n;
+        datalist.appendChild(opt);
+      }
+    }
+
+    function persistDatabase() {
+      localStorage.setItem("frida_database", JSON.stringify(database));
+      localStorage.setItem("frida_nameMap", JSON.stringify(nameMap));
+    }
+
+    // ====== Table rendering ======
+    function updateTable() {
+      tableBody.innerHTML = "";
+      let total = 0;
+
+      entries.forEach((item, index) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td class="border p-2">${item.name}</td>
+          <td class="border p-2">${item.grams}</td>
+          <td class="border p-2">${item.kulPer100.toFixed(1)}</td>
+          <td class="border p-2">${item.totalKul.toFixed(2)}</td>
+          <td class="border p-2 w-40">
+            <div class="flex justify-end gap-2">
+              <button class="bg-yellow-500 hover:bg-yellow-600 text-white p-1 rounded" onclick="editEntry(${index})" title="Rediger">
+                <!-- Pencil icon -->
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z"/>
+                  <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4a1 1 0 110 2H6v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd"/>
+                </svg>
+              </button>
+              <button class="bg-red-500 hover:bg-red-600 text-white p-1 rounded" onclick="deleteEntry(${index})" title="Slet">
+                <!-- Trash icon (outline) -->
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M3 7h18M8 7V4a1 1 0 011-1h6a1 1 0 011 1v3"/>
+                </svg>
+              </button>
+            </div>
+          </td>
+        `;
+        tableBody.appendChild(tr);
+        total += item.totalKul;
+      });
+
+      totalCell.textContent = total.toFixed(2);
+      clearAllBtn.disabled = entries.length === 0;
+    }
+
+    // Expose for inline onclick
+    window.editEntry = function(index) {
+      const item = entries[index];
+      navnInput.value = item.name;
+      gramInput.value = item.grams;
+      entries.splice(index, 1);
+      updateTable();
+    };
+
+    window.deleteEntry = function(index) {
+      entries.splice(index, 1);
+      updateTable();
+    };
+
+    // ====== File handling ======
     function handleFile(e) {
       const file = e.target.files[0];
       if (!file) return;
 
       showSpinner(true);
-      const reader = new FileReader();
+      controls.classList.add("hidden"); // skjul inputs mens vi indlæser
 
+      const reader = new FileReader();
       reader.onload = function(evt) {
         try {
           const data = new Uint8Array(evt.target.result);
           const workbook = XLSX.read(data, { type: "array" });
 
           database = {};
-          datalist.innerHTML = "";
+          nameMap = {};
+          entries = [];
+          updateTable();
 
           const sheetName = "Data_Table";
           if (!workbook.SheetNames.includes(sheetName)) {
             alert(`Sheet "${sheetName}" findes ikke i filen.`);
-            showSpinner(false);
             return;
           }
 
@@ -160,16 +232,14 @@
 
           if (jsonData.length < 5) {
             alert("Sheet har ikke nok rækker til at læse data korrekt.");
-            showSpinner(false);
             return;
           }
 
-          const kulIdx = findColumnIndex(jsonData[0], "tilgængelig kulhydrat");
+          const kulIdx  = findColumnIndex(jsonData[0], "tilgængelig kulhydrat");
           const navnIdx = findColumnIndex(jsonData[3], "fødevarenavn");
 
           if (kulIdx === -1 || navnIdx === -1) {
             alert("Kolonnerne kunne ikke findes korrekt.");
-            showSpinner(false);
             return;
           }
 
@@ -177,114 +247,92 @@
             const row = jsonData[i];
             if (!row) continue;
             const navn = row[navnIdx];
-            const kul = parseFloat(row[kulIdx]);
-
-            if (navn && !isNaN(kul)) {
-              const key = navn.toString().toLowerCase();
-              if (!database[key]) {
-                database[key] = kul;
-                const option = document.createElement("option");
-                option.value = navn;
-                datalist.appendChild(option);
+            const kul  = parseFloat(row[kulIdx]);
+            if (navn !== undefined && navn !== null && navn !== "" && !Number.isNaN(kul)) {
+              const lower = navn.toString().toLowerCase();
+              if (database[lower] === undefined) {
+                database[lower] = kul;
+                nameMap[lower] = navn.toString();
               }
             }
           }
-          // alert(`Data indlæst: ${Object.keys(database).length} ingredienser`);
-          document.getElementById("controls").classList.remove("hidden");
+
+          persistDatabase();
+          populateDatalist();
+          controls.classList.remove("hidden");
         } catch (err) {
           alert("Fejl under filindlæsning: " + err.message);
         } finally {
           showSpinner(false);
         }
       };
+
       reader.readAsArrayBuffer(file);
     }
 
-    function updateTable() {
-      tableBody.innerHTML = "";
-      let total = 0;
-
-      entries.forEach((item, index) => {
-        const row = document.createElement("tr");
-
-        row.innerHTML = `
-          <td class="border p-2">${item.name}</td>
-          <td class="border p-2">${item.grams}</td>
-          <td class="border p-2">${item.kulPer100.toFixed(1)}</td>
-          <td class="border p-2">${item.totalKul.toFixed(2)}</td>
-          <td class="border p-2 w-40">
-            <div class="flex justify-end gap-2">
-              <button class="bg-yellow-500 hover:bg-yellow-600 text-white p-1 rounded" onclick="editEntry(${index})" title="Rediger">
-                <!-- Pencil ikon -->
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z"/>
-                  <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4a1 1 0 110 2H6v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd"/>
-                </svg>
-              </button>
-              <button class="bg-red-500 hover:bg-red-600 text-white p-1 rounded" onclick="deleteEntry(${index})" title="Slet">
-                <!-- Tydelig skraldespand -->
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 
-                          01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M8 7V4a1 1 
-                          0 011-1h6a1 1 0 011 1v3"/>
-                </svg>
-              </button>
-            </div>
-          </td>
-        `;
-        tableBody.appendChild(row);
-        total += item.totalKul;
-      });
-
-      totalCell.textContent = total.toFixed(2);
-      clearAllBtn.disabled = entries.length === 0;
-    }
-
-    function editEntry(index) {
-      const item = entries[index];
-      navnInput.value = item.name;
-      gramInput.value = item.grams;
-      entries.splice(index, 1);
-      updateTable();
-    }
-
-    function deleteEntry(index) {
-      entries.splice(index, 1);
-      updateTable();
-    }
-
-    clearAllBtn.addEventListener("click", () => {
-      if (confirm("Er du sikker på, at du vil rydde alle ingredienser?")) {
-        entries = [];
-        updateTable();
-      }
-    });
-
-    form.addEventListener("submit", e => {
+    // ====== Form submit ======
+    function onSubmit(e) {
       e.preventDefault();
-      const navn = navnInput.value.trim();
-      const key = navn.toLowerCase();
-      const gram = parseFloat(gramInput.value);
+      const rawName = navnInput.value.trim();
+      const key = rawName.toLowerCase();
+      const grams = parseFloat(gramInput.value);
 
       if (database[key] === undefined) {
         alert("Ingrediens ikke fundet i databasen.");
         return;
       }
-      if (isNaN(gram) || gram <= 0) {
+      if (Number.isNaN(grams) || grams <= 0) {
         alert("Indtast venligst en gyldig mængde i gram.");
         return;
       }
 
-      const kulPer100 = database[key];
-      const totalKul = (kulPer100 * gram) / 100;
+      const kulPer100 = database[key];        // may be 0 — that's fine
+      const totalKul  = (kulPer100 * grams) / 100;
 
-      entries.push({ name: navn, grams: gram, kulPer100, totalKul });
+      entries.push({
+        name: nameMap[key] || rawName,
+        grams,
+        kulPer100,
+        totalKul
+      });
+
       updateTable();
       form.reset();
-    });
+      navnInput.focus();
+    }
 
-    fileInput.addEventListener("change", handleFile);
+    // ====== Clear all ======
+    function onClearAll() {
+      if (!entries.length) return;
+      if (confirm("Er du sikker på, at du vil rydde alle ingredienser?")) {
+        entries = [];
+        updateTable();
+      }
+    }
+
+    // ====== Boot (load dataset only; table starts empty) ======
+    (function init() {
+      // Try load dataset
+      const savedDb  = localStorage.getItem("frida_database");
+      const savedMap = localStorage.getItem("frida_nameMap");
+      if (savedDb && savedMap) {
+        try {
+          database = JSON.parse(savedDb);
+          nameMap  = JSON.parse(savedMap);
+          populateDatalist();
+          controls.classList.remove("hidden");
+        } catch { /* ignore parse errors */ }
+      }
+
+      // Always start with an empty table
+      entries = [];
+      updateTable();
+
+      // Wire events
+      fileInput.addEventListener("change", handleFile);
+      form.addEventListener("submit", onSubmit);
+      clearAllBtn.addEventListener("click", onClearAll);
+    })();
   </script>
 </body>
 </html>
